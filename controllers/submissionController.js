@@ -1,13 +1,26 @@
 const Submission = require("../models/Submission");
 const Question = require("../models/Question");
 const Team = require("../models/Team");
+const axios = require("axios");
 const { emitLeaderboardUpdate, emitSolveNotification } = require("../utils/socketHandlers");
+
+const EXECUTION_SERVER_URL = process.env.EXECUTION_SERVER_URL || "http://localhost:6001";
+const EXECUTION_SECRET = process.env.EXECUTION_SECRET || "codemania-secret-key-2026";
 
 // @desc    Submit code for a question
 exports.submitCode = async (req, res) => {
   try {
-    const { questionId, code, status } = req.body;
+    const { questionId, code, language } = req.body;
     const teamId = req.teamId;
+
+    // Validate input
+    if (!code || !language) {
+      return res.status(400).json({ message: "Code and language are required" });
+    }
+
+    if (!["python", "java"].includes(language.toLowerCase())) {
+      return res.status(400).json({ message: "Supported languages: python, java" });
+    }
 
     // Validate question exists
     const question = await Question.findById(questionId);
@@ -15,12 +28,56 @@ exports.submitCode = async (req, res) => {
       return res.status(404).json({ message: "Question not found" });
     }
 
+    // Format test cases for execution server
+    const testCases = question.testcases.map((tc) => ({
+      input: tc.input || "",
+      expectedOutput: tc.output || "",
+      hidden: tc.hidden
+    }));
+
+    if (testCases.length === 0) {
+      return res.status(400).json({ message: "Question has no test cases" });
+    }
+
+    // Call execution server
+    let execResult;
+    try {
+      const execResponse = await axios.post(
+        `${EXECUTION_SERVER_URL}/execute`,
+        {
+          code,
+          language: language.toLowerCase(),
+          testCases,
+          timeLimit: question.timeLimit || 2000,
+          submissionId: `${teamId}-${questionId}-${Date.now()}`
+        },
+        {
+          headers: { "x-execution-secret": EXECUTION_SECRET },
+          timeout: 30000 // 30 second max wait
+        }
+      );
+      execResult = execResponse.data;
+    } catch (execError) {
+      console.error("Execution server error:", execError.message);
+      return res.status(503).json({ 
+        message: "Code execution service unavailable",
+        error: execError.response?.data?.error || execError.message
+      });
+    }
+
+    const status = execResult.verdict;
+
     // Create submission
     const submission = new Submission({
       teamId,
       questionId,
-      status, // AC, WA, TLE, RE (sent from code execution service)
-      isCorrect: status === "AC"
+      code,
+      language: language.toLowerCase(),
+      status,
+      isCorrect: status === "AC",
+      executionTime: execResult.results?.[0]?.time || 0,
+      passedTestCases: execResult.passedTestCases || 0,
+      totalTestCases: execResult.totalTestCases || testCases.length
     });
 
     await submission.save();
@@ -85,8 +142,18 @@ exports.submitCode = async (req, res) => {
         status: submission.status,
         isCorrect: submission.isCorrect,
         submissionTime: submission.submissionTime,
-        pointsAwarded
-      }
+        pointsAwarded,
+        executionTime: submission.executionTime,
+        passedTestCases: submission.passedTestCases,
+        totalTestCases: submission.totalTestCases
+      },
+      // Show test case results (hide details for hidden test cases)
+      testResults: execResult.results?.map((r, i) => ({
+        testCase: r.testCase,
+        verdict: r.verdict,
+        time: r.time,
+        ...(r.hidden ? {} : { expected: r.expected, actual: r.actual })
+      }))
     });
   } catch (error) {
     console.error("Submission error:", error);

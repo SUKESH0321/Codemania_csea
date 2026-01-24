@@ -12,12 +12,24 @@ const SubmissionSchema = new mongoose.Schema(
       ref: "Question",
       required: true
     },
+    code: {
+      type: String,
+      required: true
+    },
+    language: {
+      type: String,
+      enum: ["python", "java"],
+      required: true
+    },
     status: {
       type: String,
-      enum: ["AC", "WA", "TLE", "RE"],
+      enum: ["AC", "WA", "TLE", "RE", "CE", "PENDING"],
       required: true
     },
     isCorrect: { type: Boolean, default: false },
+    executionTime: { type: Number, default: 0 }, // in ms
+    passedTestCases: { type: Number, default: 0 },
+    totalTestCases: { type: Number, default: 0 },
     submissionTime: { type: Date, default: Date.now }
   },
   { timestamps: true }
