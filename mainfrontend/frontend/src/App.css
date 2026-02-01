@@ -54,6 +54,7 @@
   position: fixed;
   inset: 0;
   z-index: 0;
+  pointer-events: none;
 }
 
 /* LOGIN FRAME */
@@ -109,4 +110,40 @@
 .login-card button:hover {
   box-shadow: 0 0 15px #f4372a;
   transform: scale(1.05);
+}
+
+/* Leaderboard Button */
+.leaderboard-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #f4372a;
+  color: #fff;
+  padding: 10px 15px;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 3;
+  transition: transform 0.2s ease;
+}
+
+.leaderboard-btn:hover {
+  transform: scale(1.1);
+}
+
+/* Close Button */
+.close-btn {
+  margin-top: 20px;
+  width: 100%;
+  padding: 10px;
+  background: #f4372a;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.close-btn:hover {
+  background: #fff;
+  color: #f4372a;
 }

@@ -361,6 +361,8 @@ export default function FaultyTerminal({
       renderer.render({ scene: mesh });
     };
     rafRef.current = requestAnimationFrame(update);
+    gl.canvas.style.pointerEvents = 'none';
+    gl.canvas.style.zIndex = '-1';
     ctn.appendChild(gl.canvas);
 
     if (mouseReact) ctn.addEventListener('mousemove', handleMouseMove);

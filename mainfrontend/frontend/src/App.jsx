@@ -4,31 +4,32 @@ import viteLogo from '/vite.svg'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  const handleLogin = () => {
+    setIsLoggedIn(true)
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <div className="page" style={{ background: 'black', color: 'white', fontFamily: 'monospace' }}>
+      {!isLoggedIn ? (
+        <div className="login-card">
+          <h2>LOGIN</h2>
+          <button onClick={handleLogin}>Login</button>
+        </div>
+      ) : (
+        <div className="login-card">
+          <h2>QUESTIONS</h2>
+          <ul style={{ listStyleType: 'none', padding: 0 }}>
+            <li>Question 1</li>
+            <li>Question 2</li>
+            <li>Question 3</li>
+            <li>Question 4</li>
+            <li>Question 5</li>
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 
