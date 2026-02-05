@@ -5,10 +5,15 @@ import {
     Terminal, Play, Cpu, ChevronLeft, ChevronDown,
     Settings, Maximize2, RotateCcw, CheckCircle,
     AlertTriangle, X, FileCode, Copy, Clock, Code,
-    Zap, Send, Wifi, WifiOff
+    Zap, Send, Wifi, WifiOff, Loader
 } from 'lucide-react';
-import { getProblemById, LANGUAGES } from '../data/problemData.js';
-import { API, EXECUTION_CONFIG } from '../config/api.js';
+import apiClient, { API, EXECUTION_CONFIG } from '../config/api.js';
+
+// Language configuration
+const LANGUAGES = {
+    python: { name: "Python", extension: ".py" },
+    java: { name: "Java", extension: ".java" }
+};
 
 // --- 3D BACKGROUND COMPONENT (Matching CyberCore from ChallengeDashboard) ---
 const CyberCore = () => {
@@ -171,15 +176,68 @@ export default function IdeInterface() {
         return () => clearInterval(interval);
     }, []);
 
-    // Load problem data
+    // Load problem data from API
     useEffect(() => {
-        const id = parseInt(problemId);
-        const problemData = getProblemById(id);
-        if (problemData) {
-            setProblem(problemData);
-            setCode(problemData.starterCode[activeLang] || '');
-        }
-    }, [problemId]);
+        const fetchProblem = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    navigate('/login');
+                    return;
+                }
+
+                const response = await apiClient.get(`/questions/${problemId}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                const data = response.data;
+                
+                // Map API response to expected problem structure
+                const mappedProblem = {
+                    id: data._id,
+                    title: data.title,
+                    description: data.descriptionWithConstraints,
+                    nonOptimizedCode: data.nonOptimizedCode,
+                    points: data.currentPoints,
+                    totalPoints: data.totalPoints,
+                    teamsSolved: data.noOfTeamsSolved,
+                    difficulty: data.totalPoints <= 100 ? 'Easy' : data.totalPoints <= 200 ? 'Medium' : 'Hard',
+                    category: 'Code Optimization',
+                    timeLimit: `${data.timeLimit || 2000}ms`,
+                    memoryLimit: `${data.memoryLimit || 256}MB`,
+                    // Map sample test cases from API
+                    sampleTestCases: data.sampleTestCases || [],
+                    testCases: (data.sampleTestCases || []).map(tc => ({
+                        input: tc.input,
+                        expectedOutput: tc.output,
+                        hidden: tc.hidden || false
+                    })),
+                    // These may not exist in backend, provide defaults
+                    examples: [],
+                    constraints: [],
+                    // For code optimization, the starter code is the non-optimized code
+                    starterCode: {
+                        python: data.nonOptimizedCode || '# Write your optimized code here',
+                        java: '// Write your optimized Java code here',
+                        c: '// Write your optimized C code here'
+                    }
+                };
+
+                setProblem(mappedProblem);
+                setCode(mappedProblem.starterCode[activeLang] || '');
+            } catch (err) {
+                console.error('Error fetching problem:', err);
+                if (err.response?.status === 401) {
+                    localStorage.removeItem('token');
+                    navigate('/login');
+                } else if (err.response?.status === 404) {
+                    navigate('/challenges');
+                }
+            }
+        };
+
+        fetchProblem();
+    }, [problemId, navigate]);
 
     // Update code when language changes
     useEffect(() => {
@@ -208,26 +266,47 @@ export default function IdeInterface() {
         setConsoleOpen(true);
         setOutput(null);
 
-        // Try to connect to execution server
+        // Call backend run endpoint (which proxies to execution server with secret)
         try {
-            const visibleTestCases = problem.testCases.filter(tc => !tc.hidden).slice(0, 2);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                navigate('/login');
+                return;
+            }
 
-            const response = await fetch(API.execute, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    code,
-                    language: activeLang,
-                    testCases: visibleTestCases,
-                    timeLimit: EXECUTION_CONFIG.defaultTimeLimit
-                })
+            // Use sample test cases for "Run" (these are the visible ones from API)
+            const testCasesToRun = (problem.sampleTestCases || []).map(tc => ({
+                input: tc.input,
+                expectedOutput: tc.output
+            }));
+
+            // Check if there are test cases
+            if (testCasesToRun.length === 0) {
+                setIsRunning(false);
+                setOutput({
+                    status: "No Test Cases",
+                    passed: false,
+                    error: "No sample test cases available for this problem.\nAdmin needs to add test cases with 'hidden: false' for users to test their code."
+                });
+                return;
+            }
+
+            console.log('Running with', testCasesToRun.length, 'test cases');
+
+            const response = await apiClient.post('/submissions/run', {
+                code,
+                language: activeLang,
+                testCases: testCasesToRun,
+                timeLimit: EXECUTION_CONFIG.defaultTimeLimit
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
             });
 
-            const result = await response.json();
+            const result = response.data;
             setIsRunning(false);
 
             setOutput({
-                status: result.verdict === 'AC' ? 'Accepted' :
+                status: result.verdict === 'AC' ? 'All Tests Passed!' :
                     result.verdict === 'WA' ? 'Wrong Answer' :
                         result.verdict === 'TLE' ? 'Time Limit Exceeded' :
                             result.verdict === 'CE' ? 'Compilation Error' :
@@ -239,16 +318,14 @@ export default function IdeInterface() {
                 totalCount: result.totalTestCases
             });
         } catch (err) {
-            // Fallback to mock execution if server unavailable
-            setTimeout(() => {
-                setIsRunning(false);
-                setOutput({
-                    status: "Simulated Run",
-                    passed: true,
-                    details: "Execution server not available. This is a simulated response.\nStart the execution server: cd backend/execution-server && npm start",
-                    mock: true
-                });
-            }, 1000);
+            setIsRunning(false);
+            console.error('Run error:', err);
+            setOutput({
+                status: "Error",
+                passed: false,
+                error: err.response?.data?.message || err.response?.data?.error || 'Execution failed. Please try again.',
+                details: "Make sure the backend and execution servers are running."
+            });
         }
     };
 
@@ -258,49 +335,48 @@ export default function IdeInterface() {
         setOutput(null);
 
         try {
-            const response = await fetch(API.execute, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    code,
-                    language: activeLang,
-                    testCases: problem.testCases,
-                    timeLimit: EXECUTION_CONFIG.defaultTimeLimit
-                })
+            const token = localStorage.getItem('token');
+            if (!token) {
+                navigate('/login');
+                return;
+            }
+
+            // Submit to backend (which handles execution and scoring)
+            const response = await apiClient.post('/submissions', {
+                questionId: problem.id,
+                code,
+                language: activeLang
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
             });
 
-            const result = await response.json();
-            setIsSubmitting(false);
-
-            const passed = result.verdict === 'AC';
+            const result = response.data;
+            const passed = result.submission?.isCorrect || false;
+            
             setOutput({
                 status: passed ? 'Accepted' :
-                    result.verdict === 'WA' ? 'Wrong Answer' :
-                        result.verdict === 'TLE' ? 'Time Limit Exceeded' :
-                            result.verdict === 'CE' ? 'Compilation Error' :
-                                result.verdict === 'RE' ? 'Runtime Error' : 'Error',
-                runtime: result.results?.[0]?.time ? `${result.results[0].time}ms` : 'N/A',
-                memory: '42.1MB',
+                    result.submission?.status === 'WA' ? 'Wrong Answer' :
+                        result.submission?.status === 'TLE' ? 'Time Limit Exceeded' :
+                            result.submission?.status === 'CE' ? 'Compilation Error' :
+                                result.submission?.status === 'RE' ? 'Runtime Error' : 'Error',
+                runtime: result.submission?.executionTime ? `${result.submission.executionTime}ms` : 'N/A',
+                memory: 'N/A',
                 passed,
-                results: result.results,
-                error: result.error,
-                passedCount: result.passedTestCases,
-                totalCount: result.totalTestCases,
+                passedCount: result.submission?.passedTestCases || 0,
+                totalCount: result.submission?.totalTestCases || 0,
+                pointsAwarded: result.pointsAwarded || 0,
                 isSubmission: true
             });
         } catch (err) {
-            setTimeout(() => {
-                setIsSubmitting(false);
-                setOutput({
-                    status: "Accepted (Simulated)",
-                    runtime: "2ms",
-                    memory: "42.1MB",
-                    passed: true,
-                    details: "All test cases passed successfully.\n(Execution server not available - simulated result)",
-                    mock: true,
-                    isSubmission: true
-                });
-            }, 1500);
+            console.error('Submission error:', err);
+            setOutput({
+                status: "Error",
+                passed: false,
+                error: err.response?.data?.message || 'Submission failed. Please try again.',
+                isSubmission: true
+            });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -483,6 +559,7 @@ export default function IdeInterface() {
                                 </div>
 
                                 {/* Examples */}
+                                {problem.examples && problem.examples.length > 0 && (
                                 <div className="space-y-4">
                                     <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
                                         <Code size={14} /> Examples
@@ -508,8 +585,10 @@ export default function IdeInterface() {
                                         </div>
                                     ))}
                                 </div>
+                                )}
 
                                 {/* Constraints */}
+                                {problem.constraints && problem.constraints.length > 0 && (
                                 <div>
                                     <h3 className="text-xs font-bold text-cyan-500 uppercase mb-3 flex items-center gap-2 tracking-widest">
                                         <AlertTriangle size={12} /> Constraints
@@ -523,29 +602,67 @@ export default function IdeInterface() {
                                         ))}
                                     </ul>
                                 </div>
+                                )}
+
+                                {/* Sample Test Cases in Description Tab */}
+                                {(problem.sampleTestCases || []).length > 0 && (
+                                <div className="mt-6">
+                                    <h3 className="text-xs font-bold text-cyan-500 uppercase mb-3 flex items-center gap-2 tracking-widest">
+                                        <CheckCircle size={12} /> Sample Test Cases
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {(problem.sampleTestCases || []).map((tc, idx) => (
+                                            <div key={idx} className="bg-cyan-900/10 border border-cyan-900/30 p-3 rounded">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-xs font-bold text-cyan-400">Sample #{idx + 1}</span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                                                    <div>
+                                                        <span className="text-cyan-600 text-[10px] uppercase block mb-1">Input</span>
+                                                        <pre className="text-cyan-100 bg-black/50 p-2 rounded overflow-x-auto whitespace-pre-wrap">{tc.input}</pre>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-cyan-600 text-[10px] uppercase block mb-1">Output</span>
+                                                        <pre className="text-cyan-100 bg-black/50 p-2 rounded overflow-x-auto whitespace-pre-wrap">{tc.output}</pre>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                )}
                             </>
                         ) : (
                             <div className="space-y-4">
                                 <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2">
                                     <CheckCircle size={14} /> Sample Test Cases
                                 </h3>
-                                {problem.testCases.filter(tc => !tc.hidden).map((tc, idx) => (
+                                <p className="text-xs text-cyan-500/60 mb-4">
+                                    These are sample test cases you can use to verify your solution. Hidden test cases (with larger inputs) will be used during submission to check time complexity.
+                                </p>
+                                {(problem.sampleTestCases || []).map((tc, idx) => (
                                     <div key={idx} className="bg-cyan-900/5 border border-cyan-900/30 p-4 rounded-sm">
-                                        <h4 className="text-xs font-bold text-cyan-400 uppercase mb-3">Test Case {idx + 1}</h4>
-                                        <div className="space-y-2 text-sm font-mono">
+                                        <h4 className="text-xs font-bold text-cyan-400 uppercase mb-3">Sample #{idx + 1}</h4>
+                                        <div className="grid grid-cols-2 gap-4 text-sm font-mono">
                                             <div>
-                                                <span className="text-cyan-700 select-none block mb-1">Input:</span>
-                                                <pre className="text-cyan-100 bg-black/50 p-2 rounded overflow-x-auto">{tc.input}</pre>
+                                                <span className="text-cyan-700 select-none block mb-1 text-xs">Input:</span>
+                                                <pre className="text-cyan-100 bg-black/50 p-2 rounded overflow-x-auto whitespace-pre-wrap text-xs">{tc.input}</pre>
                                             </div>
                                             <div>
-                                                <span className="text-cyan-700 select-none block mb-1">Expected Output:</span>
-                                                <pre className="text-cyan-100 bg-black/50 p-2 rounded">{tc.expectedOutput}</pre>
+                                                <span className="text-cyan-700 select-none block mb-1 text-xs">Expected Output:</span>
+                                                <pre className="text-cyan-100 bg-black/50 p-2 rounded whitespace-pre-wrap text-xs">{tc.output}</pre>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
-                                <div className="text-xs text-cyan-500/40 italic">
-                                    + {problem.testCases.filter(tc => tc.hidden).length} hidden test cases
+                                {(problem.sampleTestCases || []).length === 0 && (
+                                    <div className="text-cyan-500/50 text-sm italic border border-cyan-900/30 p-4 text-center">
+                                        No sample test cases available for this problem.
+                                    </div>
+                                )}
+                                <div className="text-xs text-yellow-500/60 italic flex items-center gap-2 border-t border-cyan-900/30 pt-3 mt-4">
+                                    <AlertTriangle size={12} />
+                                    Additional hidden test cases with larger inputs will be used during submission
                                 </div>
                             </div>
                         )}
@@ -658,18 +775,45 @@ export default function IdeInterface() {
 
                                         {output.results && output.results.length > 0 && (
                                             <div className="space-y-2">
+                                                <div className="text-xs text-cyan-500 uppercase tracking-wider mb-2">Test Case Results:</div>
                                                 {output.results.map((r, idx) => (
-                                                    <div key={idx} className={`p-2 rounded border text-xs ${r.verdict === 'AC'
-                                                        ? 'bg-cyan-900/10 border-cyan-500/20 text-cyan-400'
-                                                        : 'bg-red-900/10 border-red-500/20 text-red-400'
+                                                    <div key={idx} className={`p-3 rounded border text-xs ${r.verdict === 'AC'
+                                                        ? 'bg-cyan-900/10 border-cyan-500/30 text-cyan-400'
+                                                        : 'bg-red-900/10 border-red-500/30 text-red-400'
                                                         }`}>
-                                                        <span className="font-bold">Test {r.testCase}: </span>
-                                                        <span>{r.verdict === 'AC' ? 'Passed' : r.verdict}</span>
-                                                        {r.time && <span className="ml-2 text-cyan-500/60">({r.time}ms)</span>}
-                                                        {r.verdict === 'WA' && !r.hidden && r.expected && (
-                                                            <div className="mt-2 text-xs">
-                                                                <div>Expected: <code className="text-cyan-300">{r.expected}</code></div>
-                                                                <div>Got: <code className="text-red-300">{r.actual}</code></div>
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`w-2 h-2 rounded-full ${r.verdict === 'AC' ? 'bg-cyan-400' : 'bg-red-400'}`}></span>
+                                                                <span className="font-bold">
+                                                                    {r.hidden ? `Hidden Test #${r.testCase}` : `Sample Test #${r.testCase}`}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${r.verdict === 'AC' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-red-500/20 text-red-300'}`}>
+                                                                    {r.verdict === 'AC' ? 'PASSED' : r.verdict}
+                                                                </span>
+                                                                {r.time && <span className="text-cyan-500/60">⏱ {r.time}ms</span>}
+                                                            </div>
+                                                        </div>
+                                                        {r.verdict === 'WA' && !r.hidden && (
+                                                            <div className="mt-2 pt-2 border-t border-red-500/20 space-y-1">
+                                                                {r.expected && (
+                                                                    <div className="flex gap-2">
+                                                                        <span className="text-red-500/60 w-16">Expected:</span>
+                                                                        <code className="text-cyan-300 bg-black/50 px-2 py-0.5 rounded">{r.expected}</code>
+                                                                    </div>
+                                                                )}
+                                                                {r.actual && (
+                                                                    <div className="flex gap-2">
+                                                                        <span className="text-red-500/60 w-16">Got:</span>
+                                                                        <code className="text-red-300 bg-black/50 px-2 py-0.5 rounded">{r.actual}</code>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {r.verdict === 'TLE' && (
+                                                            <div className="mt-2 text-yellow-400/80 text-[10px]">
+                                                                ⚡ Your code exceeded the time limit. Try optimizing your algorithm!
                                                             </div>
                                                         )}
                                                     </div>

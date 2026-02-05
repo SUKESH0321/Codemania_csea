@@ -1,10 +1,11 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../../.env") });
 const express = require("express");
 const cors = require("cors");
 const { runCode } = require("./utils/runner");
 
 const app = express();
-const PORT = process.env.PORT || 6001;
+const PORT = process.env.EXECUTION_PORT || 6001;  // Use EXECUTION_PORT, not PORT
 const EXECUTION_SECRET = process.env.EXECUTION_SECRET;
 const MAX_CODE_SIZE = parseInt(process.env.MAX_CODE_SIZE) || 50000;
 const DEFAULT_TIME_LIMIT = parseInt(process.env.DEFAULT_TIME_LIMIT) || 2000;
@@ -60,9 +61,9 @@ app.post("/execute", verifySecret, async (req, res) => {
       return res.status(400).json({ error: "Code is required" });
     }
 
-    if (!language || !["python", "java", "c"].includes(language.toLowerCase())) {
+    if (!language || !["python", "java"].includes(language.toLowerCase())) {
       return res.status(400).json({
-        error: "Invalid language. Supported: python, java, c",
+        error: "Invalid language. Supported: python, java",
       });
     }
 

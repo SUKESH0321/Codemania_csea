@@ -1,81 +1,156 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, Users, Code, Activity, Trash2, RotateCcw, Save, X, Plus, AlertTriangle } from 'lucide-react';
-
-// --- MOCK DATA GENERATORS (To simulate your Backend) ---
-const generateMockStats = () => ({
-    totalTeams: 42,
-    totalQuestions: 8,
-    totalSubmissions: 156,
-    acceptedSubmissions: 45,
-    acceptanceRate: "28.85%",
-    teamsCompletedRound1: 3
-});
-
-const generateMockQuestions = () => [
-    { _id: '1', title: 'Binary Blast', totalPoints: 100, currentPoints: 100, descriptionWithConstraints: 'Reverse a binary string...', nonOptimizedCode: 'function solve() {...}', testcases: [] },
-    { _id: '2', title: 'Matrix Glitch', totalPoints: 200, currentPoints: 180, descriptionWithConstraints: 'Find the determinant...', nonOptimizedCode: '...', testcases: [] },
-];
-
-const generateMockTeams = () => [
-    { _id: 't1', teamName: 'NullPointers', solvedCount: 2, totalPoints: 300, round1: { status: 'IN_PROGRESS' } },
-    { _id: 't2', teamName: 'RecursionRebels', solvedCount: 5, totalPoints: 850, round1: { status: 'COMPLETED' } },
-    { _id: 't3', teamName: 'SyntaxSinners', solvedCount: 0, totalPoints: 0, round1: { status: 'NOT_STARTED' } },
-];
-
-const generateMockSubmissions = () => [
-    { _id: 's1', teamId: { teamName: 'NullPointers' }, questionId: { title: 'Binary Blast' }, status: 'AC', submissionTime: new Date().toISOString() },
-    { _id: 's2', teamId: { teamName: 'SyntaxSinners' }, questionId: { title: 'Matrix Glitch' }, status: 'WA', submissionTime: new Date(Date.now() - 100000).toISOString() },
-];
+import { useNavigate } from 'react-router-dom';
+import { Terminal, Users, Code, Activity, Trash2, RotateCcw, Save, X, Plus, AlertTriangle, Loader, Edit, Eye } from 'lucide-react';
+import apiClient from '../config/api';
 
 // --- MAIN COMPONENT ---
 export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState('DASHBOARD');
+    const navigate = useNavigate();
 
     // State mirroring backend data
-    const [stats, setStats] = useState(generateMockStats());
-    const [questions, setQuestions] = useState(generateMockQuestions());
-    const [teams, setTeams] = useState(generateMockTeams());
-    const [submissions, setSubmissions] = useState(generateMockSubmissions());
+    const [stats, setStats] = useState({
+        totalTeams: 0,
+        totalQuestions: 0,
+        totalSubmissions: 0,
+        acceptedSubmissions: 0,
+        acceptanceRate: "0%",
+        teamsCompletedRound1: 0
+    });
+    const [questions, setQuestions] = useState([]);
+    const [teams, setTeams] = useState([]);
+    const [submissions, setSubmissions] = useState([]);
 
     // Loading/Glitch State
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [glitch, setGlitch] = useState(false);
 
-    // --- ACTIONS (Simulating API Calls) ---
+    // Get admin token
+    const getAdminToken = () => localStorage.getItem('adminToken');
 
-    const handleCreateQuestion = (newQ) => {
-        // Simulates exports.createQuestion
-        const qWithId = { ...newQ, _id: Math.random().toString(36).substr(2, 9), currentPoints: newQ.totalPoints };
-        setQuestions([...questions, qWithId]);
-        triggerGlitch();
-    };
+    // Fetch data from API
+    useEffect(() => {
+        const token = getAdminToken();
+        if (!token) {
+            navigate('/admin/login');
+            return;
+        }
 
-    const handleDeleteQuestion = (id) => {
-        // Simulates exports.deleteQuestion
-        setQuestions(questions.filter(q => q._id !== id));
-        triggerGlitch();
-    };
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const headers = { Authorization: `Bearer ${token}` };
 
-    const handleResetTeam = (id) => {
-        // Simulates exports.resetTeam logic
-        setTeams(teams.map(t => {
-            if (t._id === id) {
-                return {
-                    ...t,
-                    solvedCount: 0,
-                    totalPoints: 0,
-                    round1: { ...t.round1, status: 'NOT_STARTED', solvedCount: 0, round1Points: 0 }
-                };
+                // Fetch all data in parallel
+                const [questionsRes, teamsRes, submissionsRes, statsRes] = await Promise.all([
+                    apiClient.get('/admin/questions', { headers }),
+                    apiClient.get('/admin/teams', { headers }),
+                    apiClient.get('/admin/submissions', { headers }),
+                    apiClient.get('/admin/stats', { headers }).catch(() => ({ data: null }))
+                ]);
+
+                setQuestions(questionsRes.data || []);
+                setTeams(teamsRes.data || []);
+                setSubmissions(submissionsRes.data || []);
+
+                // Calculate stats if not returned by API
+                if (statsRes.data) {
+                    setStats(statsRes.data);
+                } else {
+                    const totalSubmissions = submissionsRes.data?.length || 0;
+                    const acceptedSubmissions = submissionsRes.data?.filter(s => s.status === 'AC').length || 0;
+                    const acceptanceRate = totalSubmissions > 0 ? ((acceptedSubmissions / totalSubmissions) * 100).toFixed(2) + '%' : '0%';
+                    const teamsCompletedRound1 = teamsRes.data?.filter(t => t.round1?.status === 'COMPLETED').length || 0;
+
+                    setStats({
+                        totalTeams: teamsRes.data?.length || 0,
+                        totalQuestions: questionsRes.data?.length || 0,
+                        totalSubmissions,
+                        acceptedSubmissions,
+                        acceptanceRate,
+                        teamsCompletedRound1
+                    });
+                }
+            } catch (err) {
+                console.error('Error fetching admin data:', err);
+                if (err.response?.status === 401 || err.response?.status === 403) {
+                    localStorage.removeItem('adminToken');
+                    navigate('/admin/login');
+                } else {
+                    setError('Failed to load data. Please try again.');
+                }
+            } finally {
+                setLoading(false);
             }
-            return t;
-        }));
-        triggerGlitch();
+        };
+
+        fetchData();
+    }, [navigate]);
+
+    // --- ACTIONS ---
+
+    const handleCreateQuestion = async (newQ) => {
+        try {
+            const headers = { Authorization: `Bearer ${getAdminToken()}` };
+            const response = await apiClient.post('/admin/questions', newQ, { headers });
+            setQuestions([...questions, response.data.question]);
+            triggerGlitch();
+        } catch (err) {
+            console.error('Error creating question:', err);
+            alert(err.response?.data?.message || 'Failed to create question');
+        }
     };
 
-    const handleDeleteTeam = (id) => {
-        // Simulates exports.deleteTeam
-        setTeams(teams.filter(t => t._id !== id));
-        triggerGlitch();
+    const handleDeleteQuestion = async (id) => {
+        if (!confirm('Are you sure you want to delete this question?')) return;
+        try {
+            const headers = { Authorization: `Bearer ${getAdminToken()}` };
+            await apiClient.delete(`/admin/questions/${id}`, { headers });
+            setQuestions(questions.filter(q => q._id !== id));
+            triggerGlitch();
+        } catch (err) {
+            console.error('Error deleting question:', err);
+            alert(err.response?.data?.message || 'Failed to delete question');
+        }
+    };
+
+    const handleUpdateQuestion = async (id, updatedQ) => {
+        try {
+            const headers = { Authorization: `Bearer ${getAdminToken()}` };
+            const response = await apiClient.put(`/admin/questions/${id}`, updatedQ, { headers });
+            setQuestions(questions.map(q => q._id === id ? response.data.question : q));
+            triggerGlitch();
+        } catch (err) {
+            console.error('Error updating question:', err);
+            alert(err.response?.data?.message || 'Failed to update question');
+        }
+    };
+
+    const handleResetTeam = async (id) => {
+        if (!confirm('Are you sure you want to reset this team\'s progress?')) return;
+        try {
+            const headers = { Authorization: `Bearer ${getAdminToken()}` };
+            const response = await apiClient.put(`/admin/teams/${id}/reset`, {}, { headers });
+            setTeams(teams.map(t => t._id === id ? response.data.team : t));
+            triggerGlitch();
+        } catch (err) {
+            console.error('Error resetting team:', err);
+            alert(err.response?.data?.message || 'Failed to reset team');
+        }
+    };
+
+    const handleDeleteTeam = async (id) => {
+        if (!confirm('Are you sure you want to delete this team?')) return;
+        try {
+            const headers = { Authorization: `Bearer ${getAdminToken()}` };
+            await apiClient.delete(`/admin/teams/${id}`, { headers });
+            setTeams(teams.filter(t => t._id !== id));
+            triggerGlitch();
+        } catch (err) {
+            console.error('Error deleting team:', err);
+            alert(err.response?.data?.message || 'Failed to delete team');
+        }
     };
 
     // Visual Effect Trigger
@@ -83,6 +158,40 @@ export default function AdminDashboard() {
         setGlitch(true);
         setTimeout(() => setGlitch(false), 300);
     };
+
+    // Handle logout
+    const handleLogout = () => {
+        localStorage.removeItem('adminToken');
+        navigate('/admin/login');
+    };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="text-center">
+                    <Loader className="w-12 h-12 text-cyan-400 animate-spin mx-auto mb-4" />
+                    <p className="text-cyan-400 font-mono uppercase tracking-widest">Loading System...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="text-center">
+                    <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                    <p className="text-red-400 font-mono mb-4">{error}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="px-4 py-2 bg-cyan-900/20 border border-cyan-500/30 text-cyan-400 font-mono uppercase"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={`min-h-screen bg-black text-cyan-400 font-mono overflow-x-hidden relative selection:bg-cyan-900 selection:text-white ${glitch ? 'animate-pulse' : ''}`}>
@@ -107,7 +216,15 @@ export default function AdminDashboard() {
                         CODEMANIA_<span className="text-white">ADMIN</span>
                     </h1>
                 </div>
-                <div className="text-xs text-cyan-700 animate-pulse">SYSTEM STATUS: ONLINE</div>
+                <div className="flex items-center gap-4">
+                    <div className="text-xs text-cyan-700 animate-pulse">SYSTEM STATUS: ONLINE</div>
+                    <button
+                        onClick={handleLogout}
+                        className="px-3 py-1 text-xs font-bold uppercase tracking-wider text-cyan-400 border border-cyan-900 hover:bg-cyan-900/30 hover:border-cyan-500 transition-all"
+                    >
+                        Logout
+                    </button>
+                </div>
             </header>
 
             {/* MAIN LAYOUT */}
@@ -123,7 +240,7 @@ export default function AdminDashboard() {
                 {/* CONTENT AREA */}
                 <main className="flex-1 p-6 overflow-y-auto">
                     {activeTab === 'DASHBOARD' && <DashboardStats stats={stats} />}
-                    {activeTab === 'QUESTIONS' && <QuestionManager questions={questions} onCreate={handleCreateQuestion} onDelete={handleDeleteQuestion} />}
+                    {activeTab === 'QUESTIONS' && <QuestionManager questions={questions} onCreate={handleCreateQuestion} onDelete={handleDeleteQuestion} onUpdate={handleUpdateQuestion} />}
                     {activeTab === 'TEAMS' && <TeamManager teams={teams} onReset={handleResetTeam} onDelete={handleDeleteTeam} />}
                     {activeTab === 'SUBMISSIONS' && <SubmissionLog submissions={submissions} />}
                 </main>
@@ -179,8 +296,18 @@ const StatCard = ({ label, value, delay, isText }) => (
     </div>
 );
 
-const QuestionManager = ({ questions, onCreate, onDelete }) => {
+const QuestionManager = ({ questions, onCreate, onDelete, onUpdate }) => {
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingQuestion, setEditingQuestion] = useState(null);
+
+    const handleEdit = (question) => {
+        setEditingQuestion(question);
+    };
+
+    const handleUpdate = (updatedData) => {
+        onUpdate(editingQuestion._id, updatedData);
+        setEditingQuestion(null);
+    };
 
     return (
         <div className="space-y-6">
@@ -199,10 +326,18 @@ const QuestionManager = ({ questions, onCreate, onDelete }) => {
                 <CreateQuestionForm onClose={() => setIsFormOpen(false)} onSubmit={onCreate} />
             )}
 
+            {editingQuestion && (
+                <EditQuestionForm 
+                    question={editingQuestion} 
+                    onClose={() => setEditingQuestion(null)} 
+                    onSubmit={handleUpdate} 
+                />
+            )}
+
             <div className="grid grid-cols-1 gap-4">
                 {questions.map((q) => (
                     <div key={q._id} className="border border-cyan-900/50 bg-black/40 p-4 flex justify-between items-center hover:border-cyan-500/50 transition-colors group">
-                        <div>
+                        <div className="flex-1">
                             <div className="flex items-center gap-3">
                                 <span className="text-xs text-cyan-600 border border-cyan-900 px-1">ID: {q._id}</span>
                                 <h3 className="text-xl text-white font-bold">{q.title}</h3>
@@ -211,10 +346,29 @@ const QuestionManager = ({ questions, onCreate, onDelete }) => {
                             <div className="flex gap-4 mt-2 text-xs text-cyan-500 font-mono">
                                 <span>PTS: {q.totalPoints}</span>
                                 <span>CUR: {q.currentPoints}</span>
+                                <span className="flex items-center gap-1">
+                                    <Eye size={12} /> {q.testcases?.filter(tc => !tc.hidden).length || 0} sample
+                                </span>
+                                <span className="text-yellow-500">
+                                    {q.testcases?.filter(tc => tc.hidden).length || 0} hidden
+                                </span>
                             </div>
                         </div>
                         <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => onDelete(q._id)} className="p-2 hover:text-white hover:bg-cyan-600/20 rounded"><Trash2 size={18} /></button>
+                            <button 
+                                onClick={() => handleEdit(q)} 
+                                className="p-2 hover:text-white hover:bg-cyan-600/20 rounded text-cyan-400"
+                                title="Edit Question"
+                            >
+                                <Edit size={18} />
+                            </button>
+                            <button 
+                                onClick={() => onDelete(q._id)} 
+                                className="p-2 hover:text-white hover:bg-red-600/20 rounded text-red-400"
+                                title="Delete Question"
+                            >
+                                <Trash2 size={18} />
+                            </button>
                         </div>
                     </div>
                 ))}
@@ -228,21 +382,46 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
         title: '',
         descriptionWithConstraints: '',
         nonOptimizedCode: '',
-        totalPoints: 100,
-        testcases: '[]' // Simplified as string for UI, would parse in real app
+        totalPoints: 100
     });
+    
+    const [testcases, setTestcases] = useState([
+        { input: '', output: '', hidden: false }
+    ]);
+
+    const addTestCase = () => {
+        setTestcases([...testcases, { input: '', output: '', hidden: true }]);
+    };
+
+    const removeTestCase = (index) => {
+        if (testcases.length > 1) {
+            setTestcases(testcases.filter((_, i) => i !== index));
+        }
+    };
+
+    const updateTestCase = (index, field, value) => {
+        const updated = [...testcases];
+        updated[index][field] = value;
+        setTestcases(updated);
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSubmit({ ...formData, testcases: JSON.parse(formData.testcases || '[]') });
+        // Validate at least one test case has input/output
+        const validTestcases = testcases.filter(tc => tc.input.trim() && tc.output.trim());
+        if (validTestcases.length === 0) {
+            alert('Please add at least one test case with input and output');
+            return;
+        }
+        onSubmit({ ...formData, testcases: validTestcases });
         onClose();
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-            <div className="w-full max-w-2xl border border-cyan-500 bg-black shadow-[0_0_50px_rgba(34,211,238,0.2)] relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="w-full max-w-3xl border border-cyan-500 bg-black shadow-[0_0_50px_rgba(34,211,238,0.2)] relative my-8">
                 <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500"></div>
-                <div className="p-6 space-y-4">
+                <div className="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xl text-white uppercase tracking-widest">Construct New Challenge</h3>
                         <button onClick={onClose}><X className="text-cyan-400 hover:text-white" /></button>
@@ -255,7 +434,7 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
                                 <input
                                     required
                                     className="w-full bg-black border border-cyan-900 p-2 text-white focus:border-cyan-400 focus:outline-none focus:shadow-[0_0_10px_rgba(34,211,238,0.3)] transition-all"
-                                    placeholder="Ex: Binary Search Break"
+                                    placeholder="Ex: Find Duplicate Number"
                                     value={formData.title}
                                     onChange={e => setFormData({ ...formData, title: e.target.value })}
                                 />
@@ -274,6 +453,7 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
                         <div className="space-y-2">
                             <label className="text-xs text-cyan-400 uppercase">Description & Constraints</label>
                             <textarea
+                                required
                                 className="w-full h-24 bg-black border border-cyan-900 p-2 text-white focus:border-cyan-400 focus:outline-none font-mono text-sm"
                                 placeholder="Detailed problem statement..."
                                 value={formData.descriptionWithConstraints}
@@ -282,17 +462,269 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-xs text-cyan-400 uppercase">Non-Optimized Code (Starter)</label>
+                            <label className="text-xs text-cyan-400 uppercase">Non-Optimized Code (O(n²) starter)</label>
                             <textarea
-                                className="w-full h-24 bg-black border border-cyan-900 p-2 text-gray-400 focus:border-cyan-400 focus:outline-none font-mono text-xs"
-                                placeholder="// Paste starter code here..."
+                                required
+                                className="w-full h-32 bg-black border border-cyan-900 p-2 text-gray-400 focus:border-cyan-400 focus:outline-none font-mono text-xs"
+                                placeholder="# Paste the non-optimized Python code here..."
                                 value={formData.nonOptimizedCode}
                                 onChange={e => setFormData({ ...formData, nonOptimizedCode: e.target.value })}
                             />
                         </div>
 
+                        {/* Test Cases Section */}
+                        <div className="space-y-3 border border-cyan-900/50 p-4 bg-cyan-900/5">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs text-cyan-400 uppercase flex items-center gap-2">
+                                    <Code size={14} /> Test Cases ({testcases.length})
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={addTestCase}
+                                    className="text-xs text-cyan-400 border border-cyan-500/30 px-3 py-1 hover:bg-cyan-500 hover:text-black transition-all flex items-center gap-1"
+                                >
+                                    <Plus size={12} /> Add Test Case
+                                </button>
+                            </div>
+
+                            <div className="space-y-4 max-h-60 overflow-y-auto">
+                                {testcases.map((tc, idx) => (
+                                    <div key={idx} className="border border-cyan-900/30 p-3 bg-black/50 space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-cyan-500 font-bold">Test Case #{idx + 1}</span>
+                                            <div className="flex items-center gap-3">
+                                                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={tc.hidden}
+                                                        onChange={e => updateTestCase(idx, 'hidden', e.target.checked)}
+                                                        className="accent-cyan-500"
+                                                    />
+                                                    <span className={tc.hidden ? 'text-yellow-400' : 'text-cyan-400'}>
+                                                        {tc.hidden ? 'Hidden (for time limit)' : 'Sample (visible to user)'}
+                                                    </span>
+                                                </label>
+                                                {testcases.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeTestCase(idx)}
+                                                        className="text-red-400 hover:text-red-300 p-1"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] text-cyan-600 uppercase">Input</label>
+                                                <textarea
+                                                    className="w-full h-16 bg-black border border-cyan-900/50 p-2 text-white font-mono text-xs focus:border-cyan-400 focus:outline-none resize-none"
+                                                    placeholder="5&#10;1 3 4 2 2"
+                                                    value={tc.input}
+                                                    onChange={e => updateTestCase(idx, 'input', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] text-cyan-600 uppercase">Expected Output</label>
+                                                <textarea
+                                                    className="w-full h-16 bg-black border border-cyan-900/50 p-2 text-white font-mono text-xs focus:border-cyan-400 focus:outline-none resize-none"
+                                                    placeholder="2"
+                                                    value={tc.output}
+                                                    onChange={e => updateTestCase(idx, 'output', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <p className="text-[10px] text-cyan-600/60 italic">
+                                Sample test cases are shown to users. Hidden test cases are for time limit testing (larger inputs).
+                            </p>
+                        </div>
+
                         <button type="submit" className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-black font-bold uppercase tracking-widest mt-4">
                             Compile & Upload
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const EditQuestionForm = ({ question, onClose, onSubmit }) => {
+    const [formData, setFormData] = useState({
+        title: question.title || '',
+        descriptionWithConstraints: question.descriptionWithConstraints || '',
+        nonOptimizedCode: question.nonOptimizedCode || '',
+        totalPoints: question.totalPoints || 100
+    });
+    
+    const [testcases, setTestcases] = useState(
+        question.testcases?.length > 0 
+            ? question.testcases.map(tc => ({ ...tc })) 
+            : [{ input: '', output: '', hidden: false }]
+    );
+
+    const addTestCase = () => {
+        setTestcases([...testcases, { input: '', output: '', hidden: true }]);
+    };
+
+    const removeTestCase = (index) => {
+        if (testcases.length > 1) {
+            setTestcases(testcases.filter((_, i) => i !== index));
+        }
+    };
+
+    const updateTestCase = (index, field, value) => {
+        const updated = [...testcases];
+        updated[index][field] = value;
+        setTestcases(updated);
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const validTestcases = testcases.filter(tc => tc.input.trim() && tc.output.trim());
+        if (validTestcases.length === 0) {
+            alert('Please add at least one test case with input and output');
+            return;
+        }
+        onSubmit({ ...formData, testcases: validTestcases });
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="w-full max-w-3xl border border-yellow-500 bg-black shadow-[0_0_50px_rgba(234,179,8,0.2)] relative my-8">
+                <div className="absolute top-0 left-0 w-full h-1 bg-yellow-500"></div>
+                <div className="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl text-white uppercase tracking-widest flex items-center gap-2">
+                            <Edit size={20} className="text-yellow-500" /> Edit Challenge
+                        </h3>
+                        <button onClick={onClose}><X className="text-yellow-400 hover:text-white" /></button>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-xs text-yellow-400 uppercase">Title</label>
+                                <input
+                                    required
+                                    className="w-full bg-black border border-yellow-900 p-2 text-white focus:border-yellow-400 focus:outline-none focus:shadow-[0_0_10px_rgba(234,179,8,0.3)] transition-all"
+                                    placeholder="Ex: Find Duplicate Number"
+                                    value={formData.title}
+                                    onChange={e => setFormData({ ...formData, title: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs text-yellow-400 uppercase">Total Points</label>
+                                <input
+                                    type="number"
+                                    className="w-full bg-black border border-yellow-900 p-2 text-white focus:border-yellow-400 focus:outline-none"
+                                    value={formData.totalPoints}
+                                    onChange={e => setFormData({ ...formData, totalPoints: parseInt(e.target.value) })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs text-yellow-400 uppercase">Description & Constraints</label>
+                            <textarea
+                                required
+                                className="w-full h-24 bg-black border border-yellow-900 p-2 text-white focus:border-yellow-400 focus:outline-none font-mono text-sm"
+                                placeholder="Detailed problem statement..."
+                                value={formData.descriptionWithConstraints}
+                                onChange={e => setFormData({ ...formData, descriptionWithConstraints: e.target.value })}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs text-yellow-400 uppercase">Non-Optimized Code (O(n²) starter)</label>
+                            <textarea
+                                required
+                                className="w-full h-32 bg-black border border-yellow-900 p-2 text-gray-400 focus:border-yellow-400 focus:outline-none font-mono text-xs"
+                                placeholder="# Paste the non-optimized Python code here..."
+                                value={formData.nonOptimizedCode}
+                                onChange={e => setFormData({ ...formData, nonOptimizedCode: e.target.value })}
+                            />
+                        </div>
+
+                        {/* Test Cases Section */}
+                        <div className="space-y-3 border border-yellow-900/50 p-4 bg-yellow-900/5">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs text-yellow-400 uppercase flex items-center gap-2">
+                                    <Code size={14} /> Test Cases ({testcases.length})
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={addTestCase}
+                                    className="text-xs text-yellow-400 border border-yellow-500/30 px-3 py-1 hover:bg-yellow-500 hover:text-black transition-all flex items-center gap-1"
+                                >
+                                    <Plus size={12} /> Add Test Case
+                                </button>
+                            </div>
+
+                            <div className="space-y-4 max-h-60 overflow-y-auto">
+                                {testcases.map((tc, idx) => (
+                                    <div key={idx} className="border border-yellow-900/30 p-3 bg-black/50 space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-yellow-500 font-bold">Test Case #{idx + 1}</span>
+                                            <div className="flex items-center gap-3">
+                                                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={tc.hidden}
+                                                        onChange={e => updateTestCase(idx, 'hidden', e.target.checked)}
+                                                        className="accent-yellow-500"
+                                                    />
+                                                    <span className={tc.hidden ? 'text-red-400' : 'text-green-400'}>
+                                                        {tc.hidden ? 'Hidden (for time limit)' : 'Sample (visible to user)'}
+                                                    </span>
+                                                </label>
+                                                {testcases.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeTestCase(idx)}
+                                                        className="text-red-400 hover:text-red-300 p-1"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] text-yellow-600 uppercase">Input</label>
+                                                <textarea
+                                                    className="w-full h-16 bg-black border border-yellow-900/50 p-2 text-white font-mono text-xs focus:border-yellow-400 focus:outline-none resize-none"
+                                                    placeholder="5&#10;1 3 4 2 2"
+                                                    value={tc.input}
+                                                    onChange={e => updateTestCase(idx, 'input', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] text-yellow-600 uppercase">Expected Output</label>
+                                                <textarea
+                                                    className="w-full h-16 bg-black border border-yellow-900/50 p-2 text-white font-mono text-xs focus:border-yellow-400 focus:outline-none resize-none"
+                                                    placeholder="2"
+                                                    value={tc.output}
+                                                    onChange={e => updateTestCase(idx, 'output', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <p className="text-[10px] text-yellow-600/60 italic">
+                                Sample test cases are shown to users. Hidden test cases are for time limit testing (larger inputs).
+                            </p>
+                        </div>
+
+                        <button type="submit" className="w-full py-3 bg-yellow-600 hover:bg-yellow-500 text-black font-bold uppercase tracking-widest mt-4">
+                            Update Challenge
                         </button>
                     </form>
                 </div>

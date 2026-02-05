@@ -3,6 +3,9 @@ const router = express.Router();
 const submissionController = require("../controllers/submissionController");
 const { verifyToken } = require("../middleware/auth");
 
+// @route   POST /api/submissions/run - Run code without saving (for testing)
+router.post("/run", verifyToken, submissionController.runCode);
+
 // @route   POST /api/submissions
 router.post("/", verifyToken, submissionController.submitCode);
 

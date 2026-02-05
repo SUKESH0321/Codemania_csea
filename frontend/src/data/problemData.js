@@ -1,3 +1,11 @@
+/**
+ * @deprecated This file is no longer used.
+ * Problems/Questions are now fetched from the backend API.
+ * Admin can add/edit/delete questions via the Admin Dashboard.
+ * 
+ * This file is kept for reference purposes only and can be deleted.
+ */
+
 // Centralized problem data for the IDE
 // Contains full problem details, examples, test cases, and starter code templates
 

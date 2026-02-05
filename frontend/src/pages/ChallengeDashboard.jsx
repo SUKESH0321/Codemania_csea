@@ -3,66 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 import {
     Terminal, Code, Clock, Play, User,
-    Cpu, Zap, Shield, ChevronLeft, AlertTriangle
+    Cpu, Zap, Shield, ChevronLeft, AlertTriangle, Loader
 } from 'lucide-react';
-
-// --- DATA: CHALLENGES (Ported from your Hono code) ---
-const QUESTIONS = [
-    {
-        id: 1,
-        title: "Two Sum",
-        difficulty: "Easy",
-        category: "Arrays",
-        description: "Given an array of integers, return indices of the two numbers that add up to a specific target.",
-        timeLimit: "30 min",
-        points: 100
-    },
-    {
-        id: 2,
-        title: "Binary Tree Traversal",
-        difficulty: "Medium",
-        category: "Trees",
-        description: "Implement an in-order traversal of a binary tree without using recursion.",
-        timeLimit: "45 min",
-        points: 200
-    },
-    {
-        id: 3,
-        title: "DP - Knapsack",
-        difficulty: "Hard",
-        category: "Dynamic Prog",
-        description: "Solve the classic 0/1 knapsack problem using dynamic programming.",
-        timeLimit: "60 min",
-        points: 300
-    },
-    {
-        id: 4,
-        title: "String Palindrome",
-        difficulty: "Easy",
-        category: "Strings",
-        description: "Find the longest palindromic substring in a given string.",
-        timeLimit: "25 min",
-        points: 150
-    },
-    {
-        id: 5,
-        title: "Dijkstra's Algo",
-        difficulty: "Hard",
-        category: "Graphs",
-        description: "Implement Dijkstra's shortest path algorithm for a weighted graph.",
-        timeLimit: "50 min",
-        points: 350
-    },
-    {
-        id: 6,
-        title: "Merge Sort",
-        difficulty: "Medium",
-        category: "Sorting",
-        description: "Implement merge sort and analyze its time complexity.",
-        timeLimit: "40 min",
-        points: 180
-    }
-];
+import API from '../config/api';
 
 // --- 3D BACKGROUND COMPONENT (Cyan Theme) ---
 const CyberCore = () => {
@@ -239,12 +182,60 @@ const ChallengeCard = ({ question, onStart }) => {
 // --- MAIN PAGE COMPONENT ---
 export default function ChallengeDashboard() {
     const [booted, setBooted] = useState(false);
+    const [questions, setQuestions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const navigate = useNavigate();
 
     useEffect(() => {
         const timer = setTimeout(() => setBooted(true), 100);
         return () => clearTimeout(timer);
     }, []);
+
+    // Fetch questions from API
+    useEffect(() => {
+        const fetchQuestions = async () => {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    navigate('/login');
+                    return;
+                }
+
+                const response = await API.get('/questions', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                // Map API response to match card structure
+                const mappedQuestions = response.data.map(q => ({
+                    id: q._id,
+                    title: q.title,
+                    description: q.descriptionWithConstraints,
+                    points: q.currentPoints,
+                    totalPoints: q.totalPoints,
+                    teamsSolved: q.noOfTeamsSolved,
+                    // Derive difficulty from points (can be adjusted based on your logic)
+                    difficulty: q.totalPoints <= 100 ? 'Easy' : q.totalPoints <= 200 ? 'Medium' : 'Hard',
+                    category: 'Code Optimization',
+                    timeLimit: `${Math.ceil(q.timeLimit / 1000 / 60)} min`
+                }));
+
+                setQuestions(mappedQuestions);
+            } catch (err) {
+                console.error('Error fetching questions:', err);
+                if (err.response?.status === 401) {
+                    localStorage.removeItem('token');
+                    navigate('/login');
+                } else {
+                    setError('Failed to load challenges. Please try again.');
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchQuestions();
+    }, [navigate]);
 
     const handleStartChallenge = (id) => {
         console.log(`[System] Mounting IDE environment for Challenge ID: ${id}`);
@@ -322,8 +313,8 @@ export default function ChallengeDashboard() {
                 {/* Stats Summary */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
                     {[
-                        { label: 'Active Nodes', val: '6', icon: Cpu },
-                        { label: 'Total Points', val: '1280', icon: Zap },
+                        { label: 'Active Nodes', val: loading ? '...' : questions.length.toString(), icon: Cpu },
+                        { label: 'Total Points', val: loading ? '...' : questions.reduce((sum, q) => sum + q.points, 0).toString(), icon: Zap },
                         { label: 'System Load', val: '42%', icon: AlertTriangle },
                         { label: 'Security Level', val: 'MAX', icon: Shield },
                     ].map((stat, idx) => (
@@ -338,13 +329,37 @@ export default function ChallengeDashboard() {
                 </div>
 
                 {/* Questions Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {QUESTIONS.map((q, idx) => (
-                        <div key={q.id} style={{ animation: `fadeInUp 0.5s ease-out ${idx * 0.1}s backwards` }}>
-                            <ChallengeCard question={q} onStart={handleStartChallenge} />
-                        </div>
-                    ))}
-                </div>
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                        <Loader size={40} className="text-cyan-400 animate-spin mb-4" />
+                        <p className="text-cyan-500/60 text-sm uppercase tracking-widest">Loading Protocols...</p>
+                    </div>
+                ) : error ? (
+                    <div className="flex flex-col items-center justify-center py-20 border border-red-500/30 bg-red-900/10">
+                        <AlertTriangle size={40} className="text-red-500 mb-4" />
+                        <p className="text-red-400 text-sm">{error}</p>
+                        <button 
+                            onClick={() => window.location.reload()}
+                            className="mt-4 px-4 py-2 border border-cyan-500/30 text-cyan-400 text-xs uppercase tracking-widest hover:bg-cyan-500 hover:text-black transition-all"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                ) : questions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 border border-cyan-900/30 bg-cyan-900/5">
+                        <Terminal size={40} className="text-cyan-500/50 mb-4" />
+                        <p className="text-cyan-500/60 text-sm uppercase tracking-widest mb-2">No Active Protocols</p>
+                        <p className="text-cyan-200/40 text-xs">Challenges will appear here when available.</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {questions.map((q, idx) => (
+                            <div key={q.id} style={{ animation: `fadeInUp 0.5s ease-out ${idx * 0.1}s backwards` }}>
+                                <ChallengeCard question={q} onStart={handleStartChallenge} />
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {/* Footer Navigation */}
                 <div className="mt-16 flex justify-center">

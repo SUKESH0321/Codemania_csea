@@ -187,3 +187,51 @@ exports.getMySubmissionsByQuestion = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+// @desc    Run code without saving submission (for testing)
+exports.runCode = async (req, res) => {
+  try {
+    const { code, language, testCases, timeLimit } = req.body;
+
+    // Validate input
+    if (!code || !language) {
+      return res.status(400).json({ message: "Code and language are required" });
+    }
+
+    if (!["python", "java"].includes(language.toLowerCase())) {
+      return res.status(400).json({ message: "Supported languages: python, java" });
+    }
+
+    if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
+      return res.status(400).json({ message: "Test cases are required" });
+    }
+
+    // Call execution server with secret
+    try {
+      const execResponse = await axios.post(
+        `${EXECUTION_SERVER_URL}/execute`,
+        {
+          code,
+          language: language.toLowerCase(),
+          testCases,
+          timeLimit: timeLimit || 2000
+        },
+        {
+          headers: { "x-execution-secret": EXECUTION_SECRET },
+          timeout: 30000
+        }
+      );
+
+      res.json(execResponse.data);
+    } catch (execError) {
+      console.error("Execution server error:", execError.message);
+      return res.status(503).json({
+        message: "Code execution service unavailable",
+        error: execError.response?.data?.error || execError.message
+      });
+    }
+  } catch (error) {
+    console.error("Run code error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};

@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../../.env") });
 const Team = require("./models/Team");
 
 const app = express();
@@ -12,7 +13,7 @@ app.use(express.json());
    MongoDB Connection
 ================================ */
 mongoose
-  .connect("mongodb://127.0.0.1:27017/codemania")
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
   .catch(err => console.error("❌ MongoDB error:", err));
 

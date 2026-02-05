@@ -18,7 +18,7 @@ exports.getAllQuestions = async (req, res) => {
 exports.getQuestionById = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id).select(
-      "title descriptionWithConstraints nonOptimizedCode totalPoints currentPoints noOfTeamsSolved"
+      "title descriptionWithConstraints nonOptimizedCode totalPoints currentPoints noOfTeamsSolved timeLimit memoryLimit"
     );
 
     if (!question) {
@@ -27,7 +27,7 @@ exports.getQuestionById = async (req, res) => {
 
     // Get only visible test cases (not hidden)
     const fullQuestion = await Question.findById(req.params.id);
-    const visibleTestCases = fullQuestion.testcases.filter(tc => !tc.hidden);
+    const visibleTestCases = (fullQuestion.testcases || []).filter(tc => !tc.hidden);
 
     res.json({
       ...question.toObject(),
