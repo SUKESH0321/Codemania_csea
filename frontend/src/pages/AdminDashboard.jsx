@@ -229,20 +229,45 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
         descriptionWithConstraints: '',
         nonOptimizedCode: '',
         totalPoints: 100,
-        testcases: '[]' // Simplified as string for UI, would parse in real app
+        testcases: [{ input: '', output: '', hidden: true }]
     });
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSubmit({ ...formData, testcases: JSON.parse(formData.testcases || '[]') });
+        // Filter out empty test cases
+        const validTestcases = formData.testcases.filter(tc => tc.input.trim() || tc.output.trim());
+        onSubmit({ ...formData, testcases: validTestcases });
         onClose();
     };
 
+    const addTestCase = () => {
+        setFormData({
+            ...formData,
+            testcases: [...formData.testcases, { input: '', output: '', hidden: true }]
+        });
+    };
+
+    const removeTestCase = (index) => {
+        if (formData.testcases.length > 1) {
+            setFormData({
+                ...formData,
+                testcases: formData.testcases.filter((_, i) => i !== index)
+            });
+        }
+    };
+
+    const updateTestCase = (index, field, value) => {
+        const updated = formData.testcases.map((tc, i) =>
+            i === index ? { ...tc, [field]: value } : tc
+        );
+        setFormData({ ...formData, testcases: updated });
+    };
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-            <div className="w-full max-w-2xl border border-cyan-500 bg-black shadow-[0_0_50px_rgba(34,211,238,0.2)] relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="w-full max-w-3xl border border-cyan-500 bg-black shadow-[0_0_50px_rgba(34,211,238,0.2)] relative my-8">
                 <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500"></div>
-                <div className="p-6 space-y-4">
+                <div className="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xl text-white uppercase tracking-widest">Construct New Challenge</h3>
                         <button onClick={onClose}><X className="text-cyan-400 hover:text-white" /></button>
@@ -284,14 +309,83 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
                         <div className="space-y-2">
                             <label className="text-xs text-cyan-400 uppercase">Non-Optimized Code (Starter)</label>
                             <textarea
-                                className="w-full h-24 bg-black border border-cyan-900 p-2 text-gray-400 focus:border-cyan-400 focus:outline-none font-mono text-xs"
+                                className="w-full h-20 bg-black border border-cyan-900 p-2 text-gray-400 focus:border-cyan-400 focus:outline-none font-mono text-xs"
                                 placeholder="// Paste starter code here..."
                                 value={formData.nonOptimizedCode}
                                 onChange={e => setFormData({ ...formData, nonOptimizedCode: e.target.value })}
                             />
                         </div>
 
-                        <button type="submit" className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-black font-bold uppercase tracking-widest mt-4">
+                        {/* TEST CASES SECTION */}
+                        <div className="space-y-3 border border-cyan-900/50 p-4 bg-cyan-900/5">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs text-cyan-400 uppercase flex items-center gap-2">
+                                    <Code size={14} /> Test Cases
+                                    <span className="text-cyan-600 border border-cyan-800 px-2 py-0.5 text-[10px]">
+                                        {formData.testcases.length} CASE{formData.testcases.length !== 1 ? 'S' : ''}
+                                    </span>
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={addTestCase}
+                                    className="text-xs bg-cyan-900/30 hover:bg-cyan-800/50 text-cyan-400 px-3 py-1 flex items-center gap-1 border border-cyan-800 hover:border-cyan-500 transition-all"
+                                >
+                                    <Plus size={12} /> Add Test Case
+                                </button>
+                            </div>
+
+                            <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
+                                {formData.testcases.map((tc, index) => (
+                                    <div key={index} className="border border-cyan-900/50 bg-black/50 p-3 relative group">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs text-cyan-600 font-mono">TEST #{index + 1}</span>
+                                            <div className="flex items-center gap-3">
+                                                <label className="flex items-center gap-2 text-xs text-cyan-500 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={tc.hidden}
+                                                        onChange={(e) => updateTestCase(index, 'hidden', e.target.checked)}
+                                                        className="w-3 h-3 accent-cyan-500"
+                                                    />
+                                                    Hidden
+                                                </label>
+                                                {formData.testcases.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeTestCase(index)}
+                                                        className="text-cyan-700 hover:text-red-400 transition-colors opacity-50 group-hover:opacity-100"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[10px] text-cyan-600 uppercase mb-1 block">Input</label>
+                                                <textarea
+                                                    className="w-full h-16 bg-black border border-cyan-900/50 p-2 text-white focus:border-cyan-400 focus:outline-none font-mono text-xs resize-none"
+                                                    placeholder="1 2 3"
+                                                    value={tc.input}
+                                                    onChange={(e) => updateTestCase(index, 'input', e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-cyan-600 uppercase mb-1 block">Expected Output</label>
+                                                <textarea
+                                                    className="w-full h-16 bg-black border border-cyan-900/50 p-2 text-white focus:border-cyan-400 focus:outline-none font-mono text-xs resize-none"
+                                                    placeholder="6"
+                                                    value={tc.output}
+                                                    onChange={(e) => updateTestCase(index, 'output', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button type="submit" className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-black font-bold uppercase tracking-widest mt-4 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)] transition-all">
                             Compile & Upload
                         </button>
                     </form>
