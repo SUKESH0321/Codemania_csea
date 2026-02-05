@@ -6,9 +6,7 @@ const TeamSchema = new mongoose.Schema(
     participant1Roll: { type: String, required: true },
     collegeName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
-    passwordHash: { type: String, required: true },
     yearOfStudy: { type: Number, required: true },
-
     solvedCount: { type: Number, default: 0 },
 
     round1: {

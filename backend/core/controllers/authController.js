@@ -3,13 +3,16 @@ const Team = require("../models/Team");
 const { generateToken } = require("../middleware/auth");
 const { generateAdminToken, ADMIN_USERNAME, ADMIN_PASSWORD } = require("../middleware/admin");
 
+// Common access code for all teams (set in environment or default)
+const TEAM_ACCESS_CODE = process.env.TEAM_ACCESS_CODE || "CODEMANIA2026";
+
 // @desc    Register a new team
 exports.register = async (req, res) => {
   try {
-    const { teamName, participant1Roll, collegeName, email, password, yearOfStudy } = req.body;
+    const { teamName, participant1Roll, collegeName, email, yearOfStudy } = req.body;
 
     // Input validation
-    if (!teamName || !participant1Roll || !collegeName || !email || !password || !yearOfStudy) {
+    if (!teamName || !participant1Roll || !collegeName || !email || !yearOfStudy) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
@@ -17,11 +20,6 @@ exports.register = async (req, res) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email format" });
-    }
-
-    // Password strength (min 6 chars)
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
 
     // Check if team already exists
@@ -37,17 +35,12 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    // Create team
+    // Create team (no password needed - they use common access code)
     const team = new Team({
       teamName: teamName.trim(),
       participant1Roll: participant1Roll.trim(),
       collegeName: collegeName.trim(),
       email: email.toLowerCase().trim(),
-      passwordHash,
       yearOfStudy
     });
 
@@ -71,26 +64,28 @@ exports.register = async (req, res) => {
   }
 };
 
-// @desc    Login team
+// @desc    Login team with teamName + common accessCode
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { teamName, accessCode } = req.body;
 
     // Input validation
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+    if (!teamName || !accessCode) {
+      return res.status(400).json({ message: "Team name and access code are required" });
     }
 
-    // Find team (case-insensitive email)
-    const team = await Team.findOne({ email: email.toLowerCase() });
+    // Check access code
+    if (accessCode !== TEAM_ACCESS_CODE) {
+      return res.status(400).json({ message: "Invalid access code" });
+    }
+
+    // Find team by name (case-insensitive)
+    const team = await Team.findOne({ 
+      teamName: { $regex: new RegExp(`^${teamName.trim()}$`, 'i') }
+    });
+    
     if (!team) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
-
-    // Check password
-    const isMatch = await bcrypt.compare(password, team.passwordHash);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: "Team not found. Please register first." });
     }
 
     // Generate token
