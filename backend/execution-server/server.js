@@ -60,9 +60,9 @@ app.post("/execute", verifySecret, async (req, res) => {
       return res.status(400).json({ error: "Code is required" });
     }
 
-    if (!language || !["python", "java"].includes(language.toLowerCase())) {
+    if (!language || !["python", "java", "c"].includes(language.toLowerCase())) {
       return res.status(400).json({
-        error: "Invalid language. Supported: python, java",
+        error: "Invalid language. Supported: python, java, c",
       });
     }
 

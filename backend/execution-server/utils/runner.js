@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require("uuid");
 const PYTHON_PATH = process.env.PYTHON_PATH || "python";
 const JAVA_PATH = process.env.JAVA_PATH || "java";
 const JAVAC_PATH = process.env.JAVAC_PATH || "javac";
+const GCC_PATH = process.env.GCC_PATH || "gcc";
 
 /**
  * Main function to run code against test cases
@@ -25,9 +26,18 @@ async function runCode(code, language, testCases, timeLimit = 2000) {
       tempDir
     );
 
-    // Compile if needed (Java)
+    // Compile if needed (Java or C)
     if (language === "java") {
       const compileResult = await compileJava(filePath, tempDir);
+      if (!compileResult.success) {
+        return {
+          verdict: "CE",
+          error: compileResult.error,
+          results: [],
+        };
+      }
+    } else if (language === "c") {
+      const compileResult = await compileC(filePath, tempDir);
       if (!compileResult.success) {
         return {
           verdict: "CE",
@@ -106,6 +116,9 @@ async function writeCodeToFile(code, language, tempDir) {
     const classMatch = code.match(/public\s+class\s+(\w+)/);
     className = classMatch ? classMatch[1] : "Solution";
     fileName = `${className}.java`;
+  } else if (language === "c") {
+    fileName = "solution.c";
+    className = "solution"; // Executable name
   } else {
     throw new Error(`Unsupported language: ${language}`);
   }
@@ -122,6 +135,45 @@ async function writeCodeToFile(code, language, tempDir) {
 async function compileJava(filePath, tempDir) {
   return new Promise((resolve) => {
     const compile = spawn(JAVAC_PATH, [filePath], {
+      cwd: tempDir,
+      timeout: 30000, // 30 second compile timeout
+    });
+
+    let stderr = "";
+
+    compile.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    compile.on("close", (code) => {
+      if (code === 0) {
+        resolve({ success: true });
+      } else {
+        resolve({
+          success: false,
+          error: stderr || "Compilation failed",
+        });
+      }
+    });
+
+    compile.on("error", (err) => {
+      resolve({
+        success: false,
+        error: `Compilation error: ${err.message}`,
+      });
+    });
+  });
+}
+
+/**
+ * Compile C code using GCC
+ */
+async function compileC(filePath, tempDir) {
+  return new Promise((resolve) => {
+    const isWindows = process.platform === "win32";
+    const outputName = isWindows ? "solution.exe" : "solution";
+
+    const compile = spawn(GCC_PATH, [filePath, "-o", outputName], {
       cwd: tempDir,
       timeout: 30000, // 30 second compile timeout
     });
@@ -170,6 +222,15 @@ async function runTestCase(language, tempDir, className, testCase, timeLimit) {
       processRef = spawn(JAVA_PATH, [className], {
         cwd: tempDir,
         timeout: timeLimit,
+      });
+    } else if (language === "c") {
+      // On Windows, the executable is solution.exe; on Unix, it's ./solution
+      const isWindows = process.platform === "win32";
+      const execName = isWindows ? "solution.exe" : "./solution";
+      processRef = spawn(execName, [], {
+        cwd: tempDir,
+        timeout: timeLimit,
+        shell: isWindows,
       });
     }
 

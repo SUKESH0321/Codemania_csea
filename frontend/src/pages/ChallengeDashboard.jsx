@@ -248,8 +248,7 @@ export default function ChallengeDashboard() {
 
     const handleStartChallenge = (id) => {
         console.log(`[System] Mounting IDE environment for Challenge ID: ${id}`);
-        // In a real app: navigate(`/ide/${id}`)
-        alert(`[SYSTEM] Navigating to IDE for Challenge #${id}`);
+        navigate(`/ide/${id}`);
     };
 
     return (

@@ -7,6 +7,7 @@ import AdminLogin from "./pages/AdminLogin.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import HomePage from "./pages/Home.jsx";
 import ChallengeDashboard from "./pages/ChallengeDashboard.jsx";
+import IdeInterface from "./pages/IdeInterface.jsx";
 import "./styles/App.css";
 
 // Inner component that uses useLocation (must be inside Router)
@@ -14,7 +15,8 @@ function AppContent() {
   const location = useLocation();
   const isHomePage = location.pathname === "/";
   const isChallengesPage = location.pathname === "/challenges";
-  const hasOwnBackground = isHomePage || isChallengesPage;
+  const isIdePage = location.pathname.startsWith("/ide/");
+  const hasOwnBackground = isHomePage || isChallengesPage || isIdePage;
 
   return (
     <div className="page">
@@ -51,6 +53,7 @@ function AppContent() {
           {/* Protected Routes (Mocked for now) */}
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/challenges" element={<ChallengeDashboard />} />
+          <Route path="/ide/:problemId" element={<IdeInterface />} />
         </Routes>
       </div>
     </div>
