@@ -355,7 +355,7 @@ export default function HomePage() {
                             </button>
 
                             <button
-                                onClick={() => navigate('/admin')}
+                                onClick={() => navigate('/admin-login')}
                                 className="group px-8 py-4 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 font-bold tracking-widest transition-all"
                             >
                                 ADMIN_ACCESS

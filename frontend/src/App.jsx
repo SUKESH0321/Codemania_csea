@@ -49,7 +49,7 @@ function AppContent() {
           {/* Public Routes */}
           <Route path="/" element={<HomePage />} />
           <Route path="/team-login" element={<TeamLogin />} />
-          <Route path="/admin" element={<AdminLogin />} />
+          <Route path="/admin-login" element={<AdminLogin />} />
 
           {/* Protected Routes (Mocked for now) */}
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
