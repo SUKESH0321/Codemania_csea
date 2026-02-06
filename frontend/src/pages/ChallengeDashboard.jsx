@@ -167,7 +167,7 @@ const ChallengeCard = ({ question, onStart }) => {
                 <div className="flex items-center justify-between pt-4 border-t border-cyan-900/30">
                     <div className="flex items-center gap-2 text-cyan-500/80 text-sm font-mono">
                         <Clock size={16} />
-                        <span>{question.timeLimit}</span>
+                        <span>{Math.ceil(question.timeLimit / 1000)}s</span>
                     </div>
 
                     {isSolved ? (
@@ -248,7 +248,7 @@ export default function ChallengeDashboard() {
                     teamsSolved: q.noOfTeamsSolved,
                     difficulty: q.totalPoints <= 100 ? 'Easy' : q.totalPoints <= 200 ? 'Medium' : 'Hard',
                     category: 'Code Optimization',
-                    timeLimit: `${Math.ceil(q.timeLimit / 1000 / 60)} min`,
+                    timeLimit: q.timeLimit || 1000,
                     solved: solved.includes(q._id)
                 }));
 

@@ -346,6 +346,8 @@ const QuestionManager = ({ questions, onCreate, onDelete, onUpdate }) => {
                             <div className="flex gap-4 mt-2 text-xs text-cyan-500 font-mono">
                                 <span>PTS: {q.totalPoints}</span>
                                 <span>CUR: {q.currentPoints}</span>
+                                <span>TL: {Math.ceil((q.timeLimit || 1000) / 1000)}s</span>
+                                <span>{q.maxInputN ? `N<=${q.maxInputN}` : 'N:-'}</span>
                                 <span className="flex items-center gap-1">
                                     <Eye size={12} /> {q.testcases?.filter(tc => !tc.hidden).length || 0} sample
                                 </span>
@@ -383,7 +385,11 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
         descriptionWithConstraints: '',
         nonOptimizedCode: '',
         nonOptimizedCodeJava: '',
-        totalPoints: 100
+        totalPoints: 100,
+        timeLimit: 1000,
+        memoryLimit: 256,
+        maxInputN: '',
+        complexityNote: ''
     });
     
     const [testcases, setTestcases] = useState([
@@ -414,7 +420,14 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
             alert('Please add at least one test case with input and output');
             return;
         }
-        onSubmit({ ...formData, testcases: validTestcases });
+        const payload = {
+            ...formData,
+            timeLimit: Number(formData.timeLimit) || 1000,
+            memoryLimit: Number(formData.memoryLimit) || 256,
+            maxInputN: formData.maxInputN === '' ? null : Number(formData.maxInputN),
+            testcases: validTestcases
+        };
+        onSubmit(payload);
         onClose();
     };
 
@@ -449,6 +462,50 @@ const CreateQuestionForm = ({ onClose, onSubmit }) => {
                                     onChange={e => setFormData({ ...formData, totalPoints: parseInt(e.target.value) })}
                                 />
                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-xs text-cyan-400 uppercase">Time Limit (ms)</label>
+                                <input
+                                    type="number"
+                                    min="100"
+                                    className="w-full bg-black border border-cyan-900 p-2 text-white focus:border-cyan-400 focus:outline-none"
+                                    value={formData.timeLimit}
+                                    onChange={e => setFormData({ ...formData, timeLimit: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs text-cyan-400 uppercase">Memory Limit (MB)</label>
+                                <input
+                                    type="number"
+                                    min="64"
+                                    className="w-full bg-black border border-cyan-900 p-2 text-white focus:border-cyan-400 focus:outline-none"
+                                    value={formData.memoryLimit}
+                                    onChange={e => setFormData({ ...formData, memoryLimit: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs text-cyan-400 uppercase">Max N</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    className="w-full bg-black border border-cyan-900 p-2 text-white focus:border-cyan-400 focus:outline-none"
+                                    placeholder="Ex: 100000"
+                                    value={formData.maxInputN}
+                                    onChange={e => setFormData({ ...formData, maxInputN: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs text-cyan-400 uppercase">Complexity Note</label>
+                            <input
+                                className="w-full bg-black border border-cyan-900 p-2 text-white focus:border-cyan-400 focus:outline-none font-mono text-xs"
+                                placeholder="Ex: Target O(n log n); 1s ~ 1e8 ops"
+                                value={formData.complexityNote}
+                                onChange={e => setFormData({ ...formData, complexityNote: e.target.value })}
+                            />
                         </div>
 
                         <div className="space-y-2">
@@ -571,7 +628,11 @@ const EditQuestionForm = ({ question, onClose, onSubmit }) => {
         descriptionWithConstraints: question.descriptionWithConstraints || '',
         nonOptimizedCode: question.nonOptimizedCode || '',
         nonOptimizedCodeJava: question.nonOptimizedCodeJava || '',
-        totalPoints: question.totalPoints || 100
+        totalPoints: question.totalPoints || 100,
+        timeLimit: question.timeLimit || 1000,
+        memoryLimit: question.memoryLimit || 256,
+        maxInputN: question.maxInputN ?? '',
+        complexityNote: question.complexityNote || ''
     });
     
     const [testcases, setTestcases] = useState(
@@ -603,7 +664,14 @@ const EditQuestionForm = ({ question, onClose, onSubmit }) => {
             alert('Please add at least one test case with input and output');
             return;
         }
-        onSubmit({ ...formData, testcases: validTestcases });
+        const payload = {
+            ...formData,
+            timeLimit: Number(formData.timeLimit) || 1000,
+            memoryLimit: Number(formData.memoryLimit) || 256,
+            maxInputN: formData.maxInputN === '' ? null : Number(formData.maxInputN),
+            testcases: validTestcases
+        };
+        onSubmit(payload);
     };
 
     return (
@@ -639,6 +707,50 @@ const EditQuestionForm = ({ question, onClose, onSubmit }) => {
                                     onChange={e => setFormData({ ...formData, totalPoints: parseInt(e.target.value) })}
                                 />
                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-xs text-yellow-400 uppercase">Time Limit (ms)</label>
+                                <input
+                                    type="number"
+                                    min="100"
+                                    className="w-full bg-black border border-yellow-900 p-2 text-white focus:border-yellow-400 focus:outline-none"
+                                    value={formData.timeLimit}
+                                    onChange={e => setFormData({ ...formData, timeLimit: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs text-yellow-400 uppercase">Memory Limit (MB)</label>
+                                <input
+                                    type="number"
+                                    min="64"
+                                    className="w-full bg-black border border-yellow-900 p-2 text-white focus:border-yellow-400 focus:outline-none"
+                                    value={formData.memoryLimit}
+                                    onChange={e => setFormData({ ...formData, memoryLimit: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs text-yellow-400 uppercase">Max N</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    className="w-full bg-black border border-yellow-900 p-2 text-white focus:border-yellow-400 focus:outline-none"
+                                    placeholder="Ex: 100000"
+                                    value={formData.maxInputN}
+                                    onChange={e => setFormData({ ...formData, maxInputN: e.target.value })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs text-yellow-400 uppercase">Complexity Note</label>
+                            <input
+                                className="w-full bg-black border border-yellow-900 p-2 text-white focus:border-yellow-400 focus:outline-none font-mono text-xs"
+                                placeholder="Ex: Target O(n log n); 1s ~ 1e8 ops"
+                                value={formData.complexityNote}
+                                onChange={e => setFormData({ ...formData, complexityNote: e.target.value })}
+                            />
                         </div>
 
                         <div className="space-y-2">

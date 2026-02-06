@@ -23,7 +23,11 @@ exports.createQuestion = async (req, res) => {
       nonOptimizedCode,
       nonOptimizedCodeJava,
       totalPoints,
-      testcases
+      testcases,
+      timeLimit,
+      memoryLimit,
+      maxInputN,
+      complexityNote
     } = req.body;
 
     const question = new Question({
@@ -33,7 +37,11 @@ exports.createQuestion = async (req, res) => {
       nonOptimizedCodeJava,
       totalPoints,
       currentPoints: totalPoints, // starts at max
-      testcases
+      testcases,
+      timeLimit,
+      memoryLimit,
+      maxInputN,
+      complexityNote
     });
 
     await question.save();
@@ -58,7 +66,11 @@ exports.updateQuestion = async (req, res) => {
       nonOptimizedCodeJava,
       totalPoints,
       currentPoints,
-      testcases
+      testcases,
+      timeLimit,
+      memoryLimit,
+      maxInputN,
+      complexityNote
     } = req.body;
 
     const question = await Question.findByIdAndUpdate(
@@ -70,7 +82,11 @@ exports.updateQuestion = async (req, res) => {
         nonOptimizedCodeJava,
         totalPoints,
         currentPoints,
-        testcases
+        testcases,
+        timeLimit,
+        memoryLimit,
+        maxInputN,
+        complexityNote
       },
       { new: true }
     );

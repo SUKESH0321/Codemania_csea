@@ -20,8 +20,10 @@ const QuestionSchema = new mongoose.Schema(
     currentPoints: { type: Number, required: true },
     noOfTeamsSolved: { type: Number, default: 0 },
 
-    timeLimit: { type: Number, default: 2000 }, // ms
+    timeLimit: { type: Number, default: 1000 }, // ms
     memoryLimit: { type: Number, default: 256 }, // MB
+    maxInputN: { type: Number, default: null },
+    complexityNote: { type: String, default: "" },
 
     testcases: [TestCaseSchema]
   },
