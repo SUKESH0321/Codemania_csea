@@ -21,7 +21,9 @@ const io = new Server(server, {
 // Make io accessible in routes/controllers
 app.set("io", io);
 
-app.use(cors());
+// CORS — configurable via CORS_ORIGIN env var (default: allow all)
+const corsOrigin = process.env.CORS_ORIGIN || "*";
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 mongoose
@@ -66,6 +68,6 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`🔥 Server running on port ${PORT}`);
 });
